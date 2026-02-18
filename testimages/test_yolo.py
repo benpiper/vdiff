@@ -2,7 +2,7 @@ import sys
 import yaml
 import numpy as np
 from pathlib import Path
-from PIL import Image
+from PIL import Image, ImageDraw
 import logging
 
 # Add parent directory to path to import vdiff
@@ -29,9 +29,27 @@ def apply_mask(image: Image.Image, mask: np.ndarray) -> Image.Image:
     return Image.fromarray(np_img.astype(np.uint8))
 
 
+def annotate_image(image: Image.Image, detections: list) -> Image.Image:
+    """Draw bounding boxes and labels on a copy of the image."""
+    draw_img = image.copy().convert("RGB")
+    draw = ImageDraw.Draw(draw_img)
+    for det in detections:
+        # Draw thick red box
+        draw.rectangle(det.bbox, outline="red", width=4)
+        # Draw label background
+        label = f"{det.class_name} {det.confidence:.1%}"
+        draw.text((det.x1 + 5, det.y1 + 5), label, fill="red")
+    return draw_img
+
+
 def run_test():
     base_dir = Path(__file__).parent.parent
     config_path = base_dir / "config.yaml"
+
+    # Create output directory
+    output_dir = Path(__file__).parent / "debug_output"
+    output_dir.mkdir(exist_ok=True)
+    print(f"Results will be saved to {output_dir.relative_to(base_dir)}")
 
     # Load config for context
     config = {}
@@ -63,9 +81,9 @@ def run_test():
             "conf": config.get("detection", {}).get("confidence", 0.55),
             "size": default_size,
         },
-        {"name": "Standard Sensitivity", "conf": 0.25, "size": default_size},
-        {"name": "High Res (Strict)", "conf": 0.55, "size": 1280},
-        {"name": "High Res (Sensitive)", "conf": 0.25, "size": 1280},
+        # {"name": "Standard Sensitivity", "conf": 0.25, "size": default_size},
+        # {"name": "High Res (Strict)", "conf": 0.55, "size": 1280},
+        {"name": "High Res (Sensitive)", "conf": 0.15, "size": 1280},
     ]
 
     for img_path in sorted(images):
@@ -98,6 +116,7 @@ def run_test():
                     "confidence": cfg["conf"],
                     "img_size": cfg["size"],
                     "model": default_model,
+                    "classes": ["car"],
                 }
             )
 
@@ -114,6 +133,16 @@ def run_test():
                         print(
                             f"{prefix} FOUND: {det.class_name} ({det.confidence:.1%}) at {det.center}"
                         )
+
+                    # Save annotated image
+                    strategy_slug = cfg["name"].lower().replace(" ", "_")
+                    annotated = annotate_image(test_img, result.detections)
+                    output_path = (
+                        output_dir
+                        / f"{img_path.stem}_{strategy_slug}_{label.lower()}.jpg"
+                    )
+                    annotated.save(output_path)
+                    print(f"{prefix} SAVED: {output_path.relative_to(base_dir)}")
                 else:
                     print(f"{prefix} NOTHING FOUND")
 

@@ -2,4 +2,4 @@ config.yaml
 captures/
 *.jpg
 *.pt
-*__pycache__*
+*__pycache__*testimages/debug_output/
