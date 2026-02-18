@@ -1,6 +1,6 @@
 # vdiff
 
-Lightweight camera change detection and alert system with YOLO object detection.
+A hybrid YOLO + Vision AI security camera monitor that eliminates false alarms through intelligent detection, zonal masking, and automated scene verification.
 
 ## Quick Start
 
