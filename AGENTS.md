@@ -4,9 +4,10 @@ This project is a hybrid security camera monitor that combines fast local YOLO d
 
 ## Core Architectural Patterns
 
-1.  **Strict Zone Masking (Critical)**:
-    - Never send a raw camera frame to an LLM. Always use `VDiffApp._apply_zone_mask(image, state.zone_mask)` first.
-    - This ensures privacy and prevents the LLM from hallucinating alerts on activity outside the user's designated Region of Interest (ROI).
+1.  **Strict Zonal Analysis (Privacy-First Architecture)**:
+    - The camera frame is masked using `VDiffApp._apply_zone_mask(image, state.zone_mask)` **immediately** after capture.
+    - This means YOLO, Pixel Diff, and LLM verification **never see** any pixels outside the monitoring zones.
+    - This is the project's most critical high-level pattern.
 
 2.  **Ghost Filtering**:
     - YOLO tracks objects, but it can be noisy or "phantom."

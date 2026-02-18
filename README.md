@@ -32,8 +32,15 @@ YOLO runs every frame (~50ms on CPU). The pixel diff acts as a secondary gate. *
   Capture image from camera
          │
          ▼
+  ┌─── Zone Masking ──────────┐
+  │  Apply black mask to any  │
+  │  area outside monitored    │
+  │  zones. Privacy first.     │
+  └────────────┬───────────────┘
+               │
+               ▼
   ┌─── YOLO Detection ────────┐
-  │  Run YOLOv8 on the frame.  │
+  │  Run YOLOv8 on masked frame│
   │  Compare to previous stats:│
   │  • appeared / moved        │
   │  • disappeared / still     │

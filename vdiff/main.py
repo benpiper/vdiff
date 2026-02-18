@@ -17,7 +17,7 @@ from vdiff.describe import ChangeDescriber
 from vdiff.detect import ObjectDetector
 from vdiff.diff import DiffEngine
 from vdiff.rules import RuleEngine
-from vdiff.zones import Zone, parse_zones, build_zone_mask, filter_detections_by_zones
+from vdiff.zones import Zone, parse_zones, build_zone_mask
 
 logger = logging.getLogger("vdiff")
 
@@ -212,34 +212,6 @@ class VDiffApp:
 
         state.capture_count += 1
 
-        # 2. YOLO detection (runs every frame, fast ~50ms)
-        t0 = time.monotonic()
-        det_result = self.detector.detect(image)
-        t_detect = time.monotonic() - t0
-
-        # Filter YOLO detections to configured zones
-        if state.zones:
-            img_w, img_h = image.size
-            det_result.detections = filter_detections_by_zones(
-                det_result.detections, state.zones, img_w, img_h
-            )
-            # Recompute tracking changes with filtered detections
-            det_result.has_changes = any(
-                c.change_type in ("appeared", "disappeared", "moved")
-                for c in det_result.changes
-                if any(
-                    z.contains_bbox(
-                        c.detection.x1,
-                        c.detection.y1,
-                        c.detection.x2,
-                        c.detection.y2,
-                        img_w,
-                        img_h,
-                    )
-                    for z in state.zones
-                )
-            )
-
         # Build zone mask on first capture (needs image dimensions)
         if state.zones and state.zone_mask is None:
             img_w, img_h = image.size
@@ -256,6 +228,16 @@ class VDiffApp:
                 logger.info(f"[{cam_name}] saved zone debug image to captures/")
             except Exception as e:
                 logger.warning(f"Failed to save zone debug image: {e}")
+
+        # Apply mask immediately so all downstream analysis (YOLO, Motion, LLM)
+        # only sees the pixels within the monitoring zones.
+        if state.zones:
+            image = self._apply_zone_mask(image, state.zone_mask)
+
+        # 2. YOLO detection (now runs ONLY on masked zones)
+        t0 = time.monotonic()
+        det_result = self.detector.detect(image)
+        t_detect = time.monotonic() - t0
 
         # First image — nothing to compare yet
         if state.prev_image is None:
@@ -340,13 +322,9 @@ class VDiffApp:
         description = det_result.summary()
 
         # 5. For autonomous/moving detections, ask LLM to clarify (if enabled)
-        # Apply strict zone masking to ensure LLM only sees content within monitoring zones
-        masked_image = self._apply_zone_mask(image, state.zone_mask)
-        prev_masked_image = (
-            self._apply_zone_mask(state.prev_image, state.zone_mask)
-            if state.prev_image
-            else None
-        )
+        # Note: Image is already masked at the start of the pipeline.
+        masked_image = image
+        prev_masked_image = state.prev_image
 
         objects_to_clarify = [
             c
