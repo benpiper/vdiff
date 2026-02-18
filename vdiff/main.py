@@ -303,9 +303,17 @@ class VDiffApp:
                 if any(c.change_type != "still" for c in det_result.changes)
                 else "SKIP"
             )
+            # Determine Stage 1 status (Pixel Diff percentage)
+            s1_status = (
+                "PASS"
+                if diff_result.changed_pct >= self.diff_engine.min_changed_pct
+                else "SKIP"
+            )
+
             matrix = [
                 f"\n--- [{cam_name}] Decision Matrix ---",
-                f"1. Pixel Diff:  {'PASS' if pixel_changed else 'SKIP'} ({diff_result.changed_pct:.1f}%)",
+                f"1a. Pixel Diff: {s1_status} ({diff_result.changed_pct:.1f}%)",
+                f"1b. Structure:  {'PASS' if pixel_changed else 'SKIP'} (SSIM={diff_result.ssim_score:.3f})",
                 f"2. YOLO Detect: {len(det_result.detections)} objects",
                 f"3. Ghost Filter: {ghost_status}",
             ]
