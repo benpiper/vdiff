@@ -34,88 +34,57 @@ YOLO runs every frame (~50ms on CPU). The pixel diff acts as a secondary gate. *
          ▼
   ┌─── YOLO Detection ────────┐
   │  Run YOLOv8 on the frame.  │
-  │  Returns class, confidence,│
-  │  and bounding box for each │
-  │  detected object.          │
-  │                            │
-  │  Compare to previous frame │
-  │  detections using IoU:     │
-  │  • appeared — new object   │
-  │  • disappeared — gone      │
-  │  • moved — same object,    │
-  │    shifted > move_threshold│
-  │  • still — unchanged       │
-  │  Cost: ~50ms               │
+  │  Compare to previous stats:│
+  │  • appeared / moved        │
+  │  • disappeared / still     │
   └────────────┬───────────────┘
                │
                ▼
-  ┌─── Pixel Diff (gate) ─────┐
-  │  Stage 1: Count pixels     │
-  │  differing > pixel_        │
-  │  threshold. If % < min_    │
-  │  changed_pct → pass.       │
-  │                            │
+  ┌─── Pixel Diff ────────────┐
+  │  Stage 1: Count changed %  │
   │  Stage 2: SSIM structural  │
-  │  comparison. If score >    │
-  │  ssim_threshold → pass.    │
-  │  Cost: ~30ms               │
-  └────────────┬───────────────┘
-               │
-               ▼
-  ┌─ Change? ──────────────────┐
-  │  YOLO found changes        │
-  │  (appeared/disappeared/    │
-  │   moved) OR diff triggered │
-  │  → proceed. Otherwise skip.│
+  │  comparison.               │
   └────────────┬───────────────┘
                │
                ▼
   ┌── Verify (Ghost Filter) ──┐
   │  Cross-check YOLO changes  │
   │  against pixel diff mask.  │
-  │  If an object "moved" but  │
-  │  pixels didn't change in   │
-  │  that area, it's a ghost.  │
-  │  Filter out false motion.  │
+  │  Drops detections if no    │
+  │  corresponding pixel change│
+  └────────────┬───────────────┘
+               │
+               ▼
+  ┌─ Proceed? (Decision Matrix)┐
+  │  YOLO changes OR pixel motion│
+  │  Log summary & percentages. │
+  │  Exit early if no change.  │
   └────────────┬───────────────┘
                │
                ▼
   ┌─── LLM Clarify ───────────┐
   │  1. Autonomous: Sends a    │
   │     CROP of YOLO detections│
-  │     to the LLM.            │
   │  2. Fallback: If YOLO misses│
   │     but motion is high,    │
   │     sends the FULL image.  │
   │                            │
   │  **Strict Masking**: The   │
   │  LLM is "blinded" to areas │
-  │  outside your zones.       │
+  │  outside monitoring zones. │
   └────────────┬───────────────┘
                │
                ▼
   ┌─── Rule Evaluation ────────┐
-  │  Active strategies:        │
-  │                            │
   │  1. YOLO Class Match       │
-  │     (instant) — match by   │
-  │     COCO class name.       │
-  │                            │
   │  2. Hybrid: Class + LLM    │
-  │     (precise) — verify     │
-  │     crop via vision model. │
-  │                            │
   │  3. LLM Text Match         │
-  │     (flexible) — send full │
-  │     description to LLM.    │
   └────────────┬───────────────┘
                │ (any rule matched?)
                ▼
   ┌─── Alert ──────────────────┐
-  │  Console log (always).     │
-  │  Email with image attached │
-  │  and detailed subject line │
-  │  (e.g. "car appeared").    │
+  │  Console structured log.   │
+  │  Email with attachment.    │
   └────────────────────────────┘
 ```
 

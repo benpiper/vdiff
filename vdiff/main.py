@@ -296,6 +296,46 @@ class VDiffApp:
 
             yolo_changed = det_result.has_changes
 
+        # --- LOGGING: Decision Matrix & Detection Summary ---
+        # Log basic YOLO findings immediately
+        if det_result.detections:
+            logger.info(
+                f"[{cam_name}] YOLO: {len(det_result.detections)} object(s): "
+                f"{', '.join(str(d) for d in det_result.detections)}"
+            )
+        if det_result.has_changes:
+            logger.info(f"[{cam_name}] YOLO: {det_result.summary()}")
+
+        # Structured Decision Matrix (INFO level)
+        # Always show if there's any motion or detection, for tuning visibility.
+        if (
+            yolo_changed
+            or pixel_changed
+            or any(c.change_type != "still" for c in det_result.changes)
+            or diff_result.changed_pct > 0.5
+        ):
+            ghost_status = (
+                "PASS"
+                if yolo_changed
+                else "REJECT"
+                if any(c.change_type != "still" for c in det_result.changes)
+                else "SKIP"
+            )
+            matrix = [
+                f"\n--- [{cam_name}] Decision Matrix ---",
+                f"1. Pixel Diff:  {'PASS' if pixel_changed else 'SKIP'} ({diff_result.changed_pct:.1f}%)",
+                f"2. YOLO Detect: {len(det_result.detections)} objects",
+                f"3. Ghost Filter: {ghost_status}",
+            ]
+            # Note: Rule Eval and LLM reasoning will be appended later if they happen.
+            # But we print the core matrix now for immediate feedback.
+            matrix.append("-" * (len(matrix[0]) - 1))
+            logger.info("\n".join(matrix))
+
+        if not yolo_changed and not pixel_changed:
+            state.prev_image = image
+            return
+
         # 4. Build description from YOLO tracking (fast, no LLM needed)
         description = det_result.summary()
 
@@ -342,43 +382,21 @@ class VDiffApp:
             prev_image=prev_masked_image,
         )
 
-        # Structured Decision Matrix (INFO level)
-        # This helps users troubleshoot why alerts were triggered or suppressed.
-        if (
-            yolo_changed
-            or pixel_changed
-            or any(c.change_type != "still" for c in det_result.changes)
-        ):
-            ghost_status = (
-                "PASS"
-                if yolo_changed
-                else "REJECT"
-                if any(c.change_type != "still" for c in det_result.changes)
-                else "SKIP"
-            )
-            matrix = [
-                f"\n--- [{cam_name}] Decision Matrix ---",
-                f"1. Pixel Diff:  {'PASS' if pixel_changed else 'SKIP'} ({diff_result.changed_pct:.1f}%)",
-                f"2. YOLO Detect: {len(det_result.detections)} objects",
-                f"3. Ghost Filter: {ghost_status}",
-                f"4. Rule Eval:   {len(matches)} matches",
-            ]
-
+        if matches:
+            # Add rule details to the log if matched
+            rule_matrix = [f"--- [{cam_name}] Rule Match Details ---"]
             for m in matches:
-                matrix.append(f"   - Match: {m.rule.name} ({m.rule.severity.upper()})")
+                rule_matrix.append(
+                    f"   - Match: {m.rule.name} ({m.rule.severity.upper()})"
+                )
                 if m.detail:
-                    matrix.append("     LLM Reasoning:")
+                    rule_matrix.append("     LLM Reasoning:")
                     for line in m.detail.splitlines()[:3]:
-                        matrix.append(f"       {line}")
+                        rule_matrix.append(f"       {line}")
                     if len(m.detail.splitlines()) > 3:
-                        matrix.append("       ...")
-
-            matrix.append("-" * (len(matrix[0]) - 1))
-            logger.info("\n".join(matrix))
-
-        if not yolo_changed and not pixel_changed:
-            state.prev_image = image
-            return
+                        rule_matrix.append("       ...")
+            rule_matrix.append("-" * (len(rule_matrix[0]) - 1))
+            logger.info("\n".join(rule_matrix))
 
         # Change detected!
         state.change_count += 1
@@ -409,7 +427,8 @@ class VDiffApp:
             self.alert_dispatcher.dispatch(event)
         else:
             logger.info(
-                f"[{cam_name}] change detected but no rules matched: {description}"
+                f"[{cam_name}] change detected ({diff_result.changed_pct:.1f}%) "
+                f"but no rules matched: {description}"
             )
 
         # Update previous image

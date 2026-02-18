@@ -237,14 +237,6 @@ class ObjectDetector:
             has_changes=has_changes,
         )
 
-        if detections:
-            logger.info(
-                f"YOLO: {len(detections)} object(s): "
-                f"{', '.join(str(d) for d in detections)}"
-            )
-        if has_changes:
-            logger.info(f"YOLO: {det_result.summary()}")
-
         return det_result
 
     def _track_changes(self, curr: list[Detection]) -> list[TrackedChange]:

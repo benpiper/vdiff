@@ -23,7 +23,7 @@ def run_test():
     # Test configurations
     configs = [
         {"name": "Current (strict)", "conf": 0.55, "size": 640},
-        {"name": "More sensitive", "conf": 0.25, "size": 640},
+        {"name": "More sensitive", "conf": 0.35, "size": 640},
         {"name": "High Res", "conf": 0.55, "size": 1280},
         {"name": "Sensitive + High Res", "conf": 0.25, "size": 1280},
     ]
