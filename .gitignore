@@ -1,0 +1,5 @@
+config.yaml
+captures/
+*.jpg
+*.pt
+*__pycache__*

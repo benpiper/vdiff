@@ -1,0 +1,99 @@
+# --------------------------------------------------
+# vdiff — Camera change detection & alert config
+# --------------------------------------------------
+
+cameras:
+  - name: "Your Camera Name"
+    type: http                # http | rtsp | local
+    # Example for Hikvision/ISAPI snapshot. For standard MJPEG/JPG, just use the URL.
+    url: "http://192.168.1.100/ISAPI/ContentMgmt/StreamingProxy/channels/101/picture/"
+    username: "admin"
+    password: "password123"
+    auth: digest              # digest | basic | none
+    interval: 15              # seconds between captures
+
+    # Zones — only monitor these areas (omit to monitor entire frame)
+    # Coordinates are percentages (0-100) of image width/height
+    zones:
+      - name: "driveway"
+        x: 25               # left edge %
+        y: 35               # top edge %
+        w: 60               # width %
+        h: 20               # height %
+
+# Diff engine settings (pixel-based change detection)
+diff:
+  # Stage 1: fast pixel diff (mean absolute difference of grayscale)
+  pixel_threshold: 12       # 0-255, higher = less sensitive
+  # Minimum percentage of pixels that must differ to trigger stage 2
+  min_changed_pct: 2.0      # percent, e.g., 2.0 = 2%
+  # Stage 2: structural similarity (SSIM)
+  ssim_threshold: 0.93      # 0-1, lower = more different required to alert (0.95 is sensitive)
+  resize_width: 640         # processing resolution
+
+# YOLO object detection
+detection:
+  enabled: true
+  model: "yolov8n.pt"         # fast nano model. use "yolov8s.pt" for better accuracy.
+  confidence: 0.40            # detections below this are ignored (0.25 is very sensitive)
+  iou_threshold: 0.3          # non-max-suppression IoU threshold
+  move_threshold: 15          # pixels an object must move to count as "moved"
+  img_size: 640               # inference resolution (use 1280 for small/distant objects)
+  # classes: ["person", "car", "dog"] # filter by name or COCO IDs (e.g. [0, 2])
+
+# LLM settings — used for "Hybrid" rules and ambiguous detection clarification
+llm:
+  provider: ollama
+  host: "http://localhost:11434"
+  model: "llava"              # vision model (for "condition" checks)
+  eval_model: "llama2"        # text model (for rule logic)
+  timeout: 60                 # vision model timeout
+  eval_timeout: 10            # text model timeout
+
+# Alert rules
+rules:
+  # 1. Simple YOLO-based Rule (Fast)
+  # Fires when a person is detected, regardless of movement.
+  # - name: "Person detected"
+  #   detect_classes: ["person"]
+  #   detect_change: "appeared"   # appeared | disappeared | moved
+  #   severity: medium
+
+  # 2. Movement-based Rule (Fast)
+  # Fires when a vehicle arrives or leaves.
+  - name: "Vehicle Activity"
+    detect_classes: ["car", "truck", "bus", "motorcycle", "van"]
+    detect_change: "appeared"   # trigger on arrival
+    severity: medium
+
+  # 3. Hybrid Rule (Precise but slower)
+  # Use YOLO to find a "car", then crop and ask LLM if it matches the description.
+  - name: "Delivery Truck"
+    detect_classes: ["truck", "car"]
+    detect_change: "appeared"
+    condition: "a delivery truck, UPS truck, or FedEx truck"
+    severity: high
+
+# Alert channels
+alerts:
+  console:
+    enabled: true
+  email:
+    enabled: false
+    smtp_host: "smtp.gmail.com"
+    smtp_port: 587
+    use_tls: true
+    username: "your_email@gmail.com"
+    password: "app_password"
+    from_addr: "your_email@gmail.com"
+    to_addrs: ["alert_recipient@example.com"]
+    min_severity: medium
+
+# Storage settings
+storage:
+  history_count: 50           # number of images to keep in captures/
+  image_dir: "./captures"
+
+# Logging
+logging:
+  level: INFO
