@@ -83,7 +83,7 @@ def run_test():
         },
         # {"name": "Standard Sensitivity", "conf": 0.25, "size": default_size},
         # {"name": "High Res (Strict)", "conf": 0.55, "size": 1280},
-        {"name": "High Res (Sensitive)", "conf": 0.15, "size": 1280},
+        {"name": "High Res (Sensitive)", "conf": 0.015, "size": 1280},
     ]
 
     for img_path in sorted(images):
