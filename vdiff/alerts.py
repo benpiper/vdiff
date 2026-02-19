@@ -55,7 +55,7 @@ class AlertEvent:
     def rule_names(self) -> list[str]:
         return [m.rule.name for m in self.matched_rules]
 
-    def format_text(self) -> str:
+    def format_text(self, include_llm_reasoning: bool = True) -> str:
         ts = self.timestamp.strftime("%Y-%m-%d %H:%M:%S")
         lines = [
             f"[{self.max_severity.upper()}] vdiff Alert — {self.camera_name}",
@@ -77,7 +77,8 @@ class AlertEvent:
                 lines.append(f"  • {m.rule.name} ({m.rule.severity.upper()})")
                 if m.reason:
                     lines.append(f"    Reason: {m.reason}")
-                if m.detail:
+
+                if include_llm_reasoning and m.detail:
                     lines.append("    LLM Reasoning:")
                     # Indent and truncate LLM reasoning
                     reasoning_lines = m.detail.splitlines()
@@ -177,7 +178,7 @@ class EmailAlert:
         )
 
         # Text body
-        body = event.format_text()
+        body = event.format_text(include_llm_reasoning=False)
         msg.attach(MIMEText(body, "plain"))
 
         # Attach current image
@@ -188,15 +189,6 @@ class EmailAlert:
                 "Content-Disposition", "attachment", filename="capture.jpg"
             )
             msg.attach(img_attachment)
-
-        # Attach diff mask
-        if event.diff_mask:
-            diff_data = self._image_bytes(event.diff_mask)
-            diff_attachment = MIMEImage(diff_data, _subtype="jpeg")
-            diff_attachment.add_header(
-                "Content-Disposition", "attachment", filename="diff.jpg"
-            )
-            msg.attach(diff_attachment)
 
         # Send
         with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:

@@ -116,7 +116,7 @@ def run_test():
                     "confidence": cfg["conf"],
                     "img_size": cfg["size"],
                     "model": default_model,
-                    "classes": ["car"],
+                    "classes": ["car", "person", "truck", "bus"],
                 }
             )
 
