@@ -22,9 +22,9 @@ python3 run.py -c /path/to/config.yaml
 
 ## How It Works
 
-vdiff runs a loop for each camera: **capture → YOLO detect → pixel diff → cross-verify → describe → rules → alert**.
+vdiff runs a loop for each camera: **capture → mask → YOLO detect → pixel diff → cross-verify → describe → rules → alert**.
 
-YOLO runs every frame (~50ms on CPU). The pixel diff acts as a secondary gate. **Ghost Filtering** cross-references YOLO motion with the pixel difference mask to filter out tracker jitter. If YOLO misses an object but motion is significant, the system triggers a **Vision Fallback** where the LLM inspects the full frame as a "second set of eyes."
+YOLO runs every frame (~50ms on CPU) on the **masked** image. The pixel diff acts as a secondary gate. **Ghost Filtering** cross-references YOLO motion with the pixel difference mask to filter out tracker jitter. If YOLO detects a "disappearance" but pixel change is subtle, a **Hybrid Sensitivity** check ensures valid departures aren't missed.
 
 ### The Pipeline
 
@@ -44,6 +44,8 @@ YOLO runs every frame (~50ms on CPU). The pixel diff acts as a secondary gate. *
   │  Compare to previous stats:│
   │  • appeared / moved        │
   │  • disappeared / still     │
+  │  (Hybrid Sensitivity: Low  │
+  │  threshold if disappears)  │
   └────────────┬───────────────┘
                │
                ▼
@@ -90,8 +92,9 @@ YOLO runs every frame (~50ms on CPU). The pixel diff acts as a secondary gate. *
                │ (any rule matched?)
                ▼
   ┌─── Alert ──────────────────┐
-  │  Console structured log.   │
-  │  Email with attachment.    │
+  │  Console: Rich debug logs. │
+  │  Email: Concise alerts     │
+  │  (no reasoning/diffs).     │
   └────────────────────────────┘
 ```
 
@@ -313,6 +316,8 @@ alerts:
     min_severity: medium
 ```
 
+**Note:** Emails are simplified for quick scanning. They omit the detailed LLM reasoning and the difference mask image, which are still available in the console logs for debugging.
+
 ---
 
 ### `storage`
@@ -335,10 +340,11 @@ vdiff provides a **Decision Matrix** in the console for every frame that trigger
 
 ```text
 --- [Front Door] Decision Matrix ---
-1. Pixel Diff:  PASS (15.2%)       # Stage 1 gate passed
-2. YOLO Detect: 1 objects          # YOLO found a "person"
-3. Ghost Filter: REJECT            # Pixel mask didn't match YOLO motion
-4. Rule Eval:   0 matches          # No alerts sent
+1a. Pixel Diff: PASS (15.2%)      # Stage 1: Raw pixel change (> min_changed_pct)
+1b. Structure:  PASS (SSIM=0.85)  # Stage 2: Structural change (< ssim_threshold)
+2. YOLO Detect: 1 objects         # YOLO found a "person"
+3. Ghost Filter: REJECT           # Pixel mask didn't match YOLO motion
+4. Rule Eval:   0 matches         # No alerts sent
 ------------------------------------
 ```
 
@@ -355,13 +361,31 @@ vdiff provides a **Decision Matrix** in the console for every frame that trigger
 > [!TIP]
 > If you are unsure why an object is being rejected by the LLM, check the console output. The Decision Matrix now includes the **LLM Reasoning** (Chain-of-Thought) when a Hybrid Rule is evaluated.
 
-### Diagnostic Tuning Tool
+### Tuning Tools
 
-If YOLO is failing to identify an object in your environment, use the provided diagnostic script to find the optimal settings:
+vdiff provides two powerful scripts in `testimages/` to help you verify detections and tune your configuration.
 
-1. Save a sample image with the object to `testimages/`
-2. Run the diagnostic: `python3 testimages/test_yolo.py`
-3. The script will test several strategies (varying `confidence` and `img_size`) and tell you which one caught the object.
+#### 1. Calibration Utility (`calibrate.py`)
+
+A "set it and forget it" tool to find the perfect thresholds.
+
+1.  Save a **Background** image (empty scene) and an **Object** image (e.g., car in driveway).
+2.  Run: `python3 testimages/calibrate.py background.jpg object.jpg`
+3.  The script will tell you:
+    *   **Exact Pixel Diff** vs **SSIM Score** (helps you set `min_changed_pct` and `ssim_threshold`).
+    *   **YOLO Confidence**: Recommends the optimal confidence level.
+    *   **Zone Check**: WARNING if your object is visible in the raw image but blocked by your zone mask.
+
+#### 2. Diagnostic Script (`test_yolo.py`)
+
+Visually verify what YOLO sees.
+
+1.  Put images in `testimages/`.
+2.  Run: `python3 testimages/test_yolo.py`
+3.  Check `testimages/debug_output/`:
+    *   See annotated images with bounding boxes drawn.
+    *   Compare **Raw** vs **Masked** versions to confirm your zones are correct.
+    *   See which YOLO model size works best for your specific camera angle.
 
 ---
 
