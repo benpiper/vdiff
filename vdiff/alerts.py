@@ -132,6 +132,7 @@ class EmailAlert:
         self.password = config.get("password", "")
         self.from_addr = config.get("from_addr", "")
         self.to_addrs = config.get("to_addrs", [])
+        self.attach_image = config.get("attach_image", True)
         min_sev = config.get("min_severity", "medium")
         self.min_severity_level = self.SEVERITY_LEVELS.get(min_sev, 1)
 
@@ -189,8 +190,8 @@ class EmailAlert:
         body = event.format_text(include_llm_reasoning=False)
         msg.attach(MIMEText(body, "plain"))
 
-        # Attach current image
-        if event.current_image:
+        # Attach current image if enabled
+        if self.attach_image and event.current_image:
             img_data = self._image_bytes(event.current_image)
             img_attachment = MIMEImage(img_data, _subtype="jpeg")
             img_attachment.add_header(

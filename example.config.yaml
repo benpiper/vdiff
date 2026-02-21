@@ -89,6 +89,7 @@ alerts:
     smtp_host: "smtp.gmail.com"
     smtp_port: 587
     use_tls: true
+    attach_image: true
     username: "your_email@gmail.com"
     password: "app_password"
     from_addr: "your_email@gmail.com"
