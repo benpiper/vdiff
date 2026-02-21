@@ -34,3 +34,16 @@ This project is a hybrid security camera monitor that combines fast local YOLO d
 - `vdiff/diff.py`: Fast grayscale pixel difference and SSIM structural similarity.
 - `vdiff/zones.py`: Coordinate parsing and image masking logic.
 - `vdiff/rules.py`: Rule matching logic and LLM verification prompts.
+
+## AI Agent Directives
+
+1.  **Logging is Critical**: The `Decision Matrix` printed in the console is the primary debugging interface for vdiff. Any modifications to the core pipeline (`main.py`, `detect.py`, `diff.py`) **must** preserve the structure and accuracy of this matrix logging. Do not remove existing percentage/threshold logging.
+2.  **Performance First**: Real-time evaluation is crucial. YOLO runs on the CPU by default (~50ms/frame). **Do not** introduce heavy, blocking synchronous operations inside the main loop of `vdiff/main.py` or include unusually large dependencies unless absolutely necessary and explicitly requested by the user.
+3.  **Type Hints & Docstrings**: Ensure Python type hints and explanatory docstrings are present when writing any new functions, classes, or significant logic blocks to maintain repository standards.
+
+## Testing & Verification Protocol
+
+When working on this repository, you must verify your changes properly:
+
+-   **Mandatory YOLO Testing**: Before committing any changes that affect YOLO confidence (`confidence`), non-max suppression (`iou_threshold`), or tracking logic, you **must** run `python3 testimages/test_yolo.py` and inspect the `debug_output` to visually confirm your impact on bounding boxes and detections.
+-   **Rule & Diff Tuning**: When asked to adjust pixel difference thresholds (`pixel_threshold`, `min_changed_pct`, `ssim_threshold`), first run `python3 testimages/calibrate.py testimages/background.jpg testimages/object.jpg` (or substitute the relevant test images) to compute real values instead of guessing.

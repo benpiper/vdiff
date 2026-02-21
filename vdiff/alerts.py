@@ -57,10 +57,18 @@ class AlertEvent:
 
     def format_text(self, include_llm_reasoning: bool = True) -> str:
         ts = self.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+
+        display_desc = self.description
+        if not include_llm_reasoning:
+            if " | LLM detail: " in display_desc:
+                display_desc = display_desc.split(" | LLM detail: ")[0]
+            if display_desc.startswith("YOLO missed detection fallback: "):
+                display_desc = "Unidentified motion detected (YOLO fallback)"
+
         lines = [
             f"[{self.max_severity.upper()}] vdiff Alert — {self.camera_name}",
             f"Time: {ts}",
-            f"Description: {self.description}",
+            f"Description: {display_desc}",
             f"Change: {self.changed_pct:.1f}% pixels, SSIM={self.ssim_score:.3f}",
         ]
         if self.detections:
