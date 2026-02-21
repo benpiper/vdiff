@@ -108,8 +108,11 @@ class CameraState:
 class VDiffApp:
     """Main application class orchestrating the capture-detect-diff-alert pipeline."""
 
-    def __init__(self, config_path: str = "config.yaml"):
+    def __init__(self, config_path: str = "config.yaml", debug_mode: bool = False):
         self.config = self._load_config(config_path)
+        self.debug_mode = debug_mode or (
+            self.config.get("logging", {}).get("level", "INFO").upper() == "DEBUG"
+        )
         self._setup_logging()
         self._running = True
 
@@ -160,6 +163,9 @@ class VDiffApp:
     def _setup_logging(self):
         level_str = self.config.get("logging", {}).get("level", "INFO")
         level = getattr(logging, level_str.upper(), logging.INFO)
+        if self.debug_mode:
+            level = logging.DEBUG
+
         logging.basicConfig(
             level=level,
             format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -211,6 +217,10 @@ class VDiffApp:
         t_capture = time.monotonic() - t0
 
         state.capture_count += 1
+
+        # In debug mode, save every frame to history buffer
+        if self.debug_mode:
+            state.save_image(image, "_debug")
 
         # Build zone mask on first capture (needs image dimensions)
         if state.zones and state.zone_mask is None:
@@ -471,9 +481,15 @@ def main():
         default="config.yaml",
         help="Path to config file (default: config.yaml)",
     )
+    parser.add_argument(
+        "-d",
+        "--debug",
+        action="store_true",
+        help="Enable debug mode (saves all captured images & enables verbose logging)",
+    )
     args = parser.parse_args()
 
-    app = VDiffApp(config_path=args.config)
+    app = VDiffApp(config_path=args.config, debug_mode=args.debug)
     app.run()
 
 
