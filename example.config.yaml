@@ -74,6 +74,12 @@ rules:
     condition: "a delivery truck, UPS truck, or FedEx truck"
     severity: high
 
+  - name: "Vehicle Day"
+    detect_classes: ["car", "truck"]
+    detect_change: ["appeared", "disappeared"]
+    condition: "a delivery van or truck"    # YOLO finds car -> LLM verifies
+    severity: medium
+
 # Alert channels
 alerts:
   console:

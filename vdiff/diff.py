@@ -94,6 +94,19 @@ class DiffEngine:
         prev_gray = self._to_gray_array(prev_r)
         curr_gray = self._to_gray_array(curr_r)
 
+        # Handle minor camera shifts (align curr to prev)
+        shift, _ = cv2.phaseCorrelate(curr_gray, prev_gray)
+        dx, dy = shift
+        h, w = curr_gray.shape
+        # Only align if shift is noticeable but not massive (e.g. < 5% of width)
+        if 0.5 < abs(dx) < w * 0.05 or 0.5 < abs(dy) < h * 0.05:
+            M = np.float32([[1, 0, dx], [0, 1, dy]])
+            curr_gray = cv2.warpAffine(curr_gray, M, (w, h))
+
+        # Apply Gaussian blur to reduce high-frequency noise and slight lighting changes
+        prev_gray = cv2.GaussianBlur(prev_gray, (5, 5), 0)
+        curr_gray = cv2.GaussianBlur(curr_gray, (5, 5), 0)
+
         # Resize zone mask to match if provided
         if zone_mask is not None:
             mask_h, mask_w = zone_mask.shape[:2]

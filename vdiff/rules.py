@@ -17,9 +17,8 @@ class Rule:
     name: str
     condition: str
     severity: str = "medium"  # low | medium | high
-    # Optional: match specific YOLO classes directly (fast, no LLM)
     detect_classes: list = None  # e.g., ["person", "car"]
-    detect_change: str = ""  # "appeared", "disappeared", "moved", or "" for any
+    detect_change: str | list = ""  # "appeared", "disappeared", "moved", or "" for any
 
     def __post_init__(self):
         if self.detect_classes is None:
@@ -130,8 +129,12 @@ class RuleEngine:
                 continue
 
             # Check change type filter
-            if rule.detect_change and change.change_type != rule.detect_change:
-                continue
+            if rule.detect_change:
+                if isinstance(rule.detect_change, list):
+                    if change.change_type not in rule.detect_change:
+                        continue
+                elif change.change_type != rule.detect_change:
+                    continue
 
             # If rule has a condition (e.g. "white SUV"), verify it on the crop
             if rule.condition:
