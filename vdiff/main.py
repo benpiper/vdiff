@@ -158,7 +158,24 @@ class VDiffApp:
             logger.error(f"Config file not found: {path}")
             sys.exit(1)
         with open(config_path) as f:
-            return yaml.safe_load(f)
+            config = yaml.safe_load(f)
+
+        # 1. Basic Validation
+        if not config:
+            logger.error(f"Config file {path} is empty or invalid YAML.")
+            sys.exit(1)
+
+        if (
+            "cameras" not in config
+            or not isinstance(config["cameras"], list)
+            or len(config["cameras"]) == 0
+        ):
+            logger.error(
+                "Config Error: At least one camera must be defined in 'cameras'."
+            )
+            sys.exit(1)
+
+        return config
 
     def _setup_logging(self):
         level_str = self.config.get("logging", {}).get("level", "INFO")
@@ -217,10 +234,6 @@ class VDiffApp:
         t_capture = time.monotonic() - t0
 
         state.capture_count += 1
-
-        # In debug mode, save every frame to history buffer
-        if self.debug_mode:
-            state.save_image(image, "_debug")
 
         # Build zone mask on first capture (needs image dimensions)
         if state.zones and state.zone_mask is None:
@@ -287,6 +300,13 @@ class VDiffApp:
                 det_result.has_changes = False
 
             yolo_changed = det_result.has_changes
+
+        # In debug mode, save the frame with YOLO detections drawn on it
+        if self.debug_mode:
+            from vdiff.detect import draw_detections
+
+            debug_drawn = draw_detections(image, det_result.detections)
+            state.save_image(debug_drawn, "_debug")
 
         # --- LOGGING: Decision Matrix & Detection Summary ---
         # Log basic YOLO findings immediately

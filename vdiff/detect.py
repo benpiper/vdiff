@@ -324,3 +324,24 @@ class ObjectDetector:
         x2 = min(w, detection.x2 + padding)
         y2 = min(h, detection.y2 + padding)
         return image.crop((x1, y1, x2, y2))
+
+
+def draw_detections(image: Image.Image, detections: list[Detection]) -> Image.Image:
+    """Draw bounding boxes and labels for all detections on a copy of the image."""
+    from PIL import ImageDraw
+
+    debug_img = image.copy()
+    draw = ImageDraw.Draw(debug_img)
+
+    for d in detections:
+        # Draw box
+        draw.rectangle(d.bbox, outline="red", width=3)
+        # Draw label
+        label = f"{d.class_name} {d.confidence:.2f}"
+
+        # Draw text background
+        text_bbox = draw.textbbox((d.x1, max(0, d.y1 - 15)), label)
+        draw.rectangle(text_bbox, fill="red")
+        draw.text((d.x1, max(0, d.y1 - 15)), label, fill="white")
+
+    return debug_img
