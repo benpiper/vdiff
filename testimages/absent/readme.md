@@ -1,0 +1,1 @@
+Put images without the object you want to detect here.
