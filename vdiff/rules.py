@@ -55,6 +55,7 @@ class RuleEngine:
                 )
             )
         self.llm_config = llm_config
+        self.llm_enabled = llm_config.get("enabled", False)
         self._client = None
         # Separate timeout for rule eval (text-only, should be fast)
         self._eval_timeout = llm_config.get("eval_timeout", 10)
@@ -105,7 +106,7 @@ class RuleEngine:
                 llm_rules.append(rule)
 
         # Strategy 2: Non-blocking LLM evaluation for text-condition rules
-        if llm_rules and description:
+        if self.llm_enabled and llm_rules and description:
             llm_matches = self._evaluate_nonblocking(description, llm_rules)
             matches.extend(llm_matches)
 
@@ -138,6 +139,10 @@ class RuleEngine:
 
             # If rule has a condition (e.g. "white SUV"), verify it on the crop
             if rule.condition:
+                if not self.llm_enabled:
+                    # Skip this detection if it requires LLM verification and LLM is disabled
+                    continue
+
                 target_img = image
                 if change.change_type == "disappeared":
                     target_img = prev_image

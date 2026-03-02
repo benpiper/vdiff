@@ -11,6 +11,8 @@ from typing import Optional
 
 from PIL import Image
 
+from vdiff.detect import draw_detections
+
 logger = logging.getLogger(__name__)
 
 
@@ -192,7 +194,19 @@ class EmailAlert:
 
         # Attach current image if enabled
         if self.attach_image and event.current_image:
-            img_data = self._image_bytes(event.current_image)
+            # If we have detections, draw them for the email attachment
+            display_image = event.current_image
+            if event.detections:
+                try:
+                    display_image = draw_detections(
+                        event.current_image, event.detections
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to draw detections for email attachment: {e}"
+                    )
+
+            img_data = self._image_bytes(display_image)
             img_attachment = MIMEImage(img_data, _subtype="jpeg")
             img_attachment.add_header(
                 "Content-Disposition", "attachment", filename="capture.jpg"

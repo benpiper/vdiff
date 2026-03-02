@@ -328,20 +328,34 @@ class ObjectDetector:
 
 def draw_detections(image: Image.Image, detections: list[Detection]) -> Image.Image:
     """Draw bounding boxes and labels for all detections on a copy of the image."""
-    from PIL import ImageDraw
+    from PIL import ImageDraw, ImageFont
 
     debug_img = image.copy()
     draw = ImageDraw.Draw(debug_img)
 
+    # Use a larger font (60px is ~6x default)
+    try:
+        font = ImageFont.load_default(size=40)
+    except TypeError:
+        # Fallback for older Pillow versions
+        font = ImageFont.load_default()
+
     for d in detections:
         # Draw box
-        draw.rectangle(d.bbox, outline="red", width=3)
+        draw.rectangle(d.bbox, outline="red", width=6)
         # Draw label
         label = f"{d.class_name} {d.confidence:.2f}"
 
         # Draw text background
-        text_bbox = draw.textbbox((d.x1, max(0, d.y1 - 15)), label)
+        text_bbox = draw.textbbox((d.x1, d.y1), label, font=font)
+        # Move label above box if space allows
+        if text_bbox[1] > (text_bbox[3] - text_bbox[1]):
+            text_y = d.y1 - (text_bbox[3] - text_bbox[1])
+        else:
+            text_y = d.y1
+
+        text_bbox = draw.textbbox((d.x1, text_y), label, font=font)
         draw.rectangle(text_bbox, fill="red")
-        draw.text((d.x1, max(0, d.y1 - 15)), label, fill="white")
+        draw.text((d.x1, text_y), label, fill="white", font=font)
 
     return debug_img

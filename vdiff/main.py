@@ -118,12 +118,19 @@ class VDiffApp:
 
         # Initialize components
         self.cameras: list[CameraState] = []
+        self.llm_config = self.config.get("llm", {})
+        self.llm_enabled = self.llm_config.get("enabled", False)
+
+        # Initialize components
+        self.cameras: list[CameraState] = []
         self.diff_engine = DiffEngine(self.config.get("diff", {}))
         self.detector = ObjectDetector(self.config.get("detection", {}))
-        self.describer = ChangeDescriber(self.config.get("llm", {}))
+
+        # Only initialize LLM components if enabled
+        self.describer = ChangeDescriber(self.llm_config) if self.llm_enabled else None
         self.rule_engine = RuleEngine(
             self.config.get("rules", []),
-            self.config.get("llm", {}),
+            self.llm_config,
         )
         self.alert_dispatcher = AlertDispatcher(self.config.get("alerts", {}))
 
@@ -141,10 +148,12 @@ class VDiffApp:
             self.cameras.append(state)
 
         det_status = "enabled" if self.detector.enabled else "disabled"
+        llm_status = "enabled" if self.llm_enabled else "disabled"
         logger.info(
             f"vdiff initialized: {len(self.cameras)} camera(s), "
             f"{len(self.rule_engine.rules)} rule(s), "
-            f"YOLO {det_status} ({self.detector.model_name})"
+            f"YOLO {det_status} ({self.detector.model_name}), "
+            f"LLM {llm_status}"
         )
 
         # Signal handling
@@ -369,7 +378,7 @@ class VDiffApp:
             for c in det_result.changed_objects()
             if c.change_type in ("appeared", "moved")
         ]
-        if objects_to_clarify and self.describer:
+        if self.llm_enabled and objects_to_clarify:
             llm_parts = []
             for change in objects_to_clarify[:3]:  # max 3 LLM calls per frame
                 cropped = self.detector.crop_detection(masked_image, change.detection)

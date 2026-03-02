@@ -31,14 +31,33 @@ def apply_mask(image: Image.Image, mask: np.ndarray) -> Image.Image:
 
 def annotate_image(image: Image.Image, detections: list) -> Image.Image:
     """Draw bounding boxes and labels on a copy of the image."""
+    from PIL import ImageFont
+
     draw_img = image.copy().convert("RGB")
     draw = ImageDraw.Draw(draw_img)
+
+    # Use a larger font (60px is ~6x default)
+    try:
+        font = ImageFont.load_default(size=40)
+    except TypeError:
+        font = ImageFont.load_default()
+
     for det in detections:
         # Draw thick red box
-        draw.rectangle(det.bbox, outline="red", width=4)
-        # Draw label background
+        draw.rectangle(det.bbox, outline="red", width=6)
+        # Draw label
         label = f"{det.class_name} {det.confidence:.1%}"
-        draw.text((det.x1 + 5, det.y1 + 5), label, fill="red")
+        text_bbox = draw.textbbox((det.x1, det.y1), label, font=font)
+
+        # Move label above box if space allows
+        if text_bbox[1] > (text_bbox[3] - text_bbox[1]):
+            text_y = det.y1 - (text_bbox[3] - text_bbox[1])
+        else:
+            text_y = det.y1
+
+        text_bbox = draw.textbbox((det.x1, text_y), label, font=font)
+        draw.rectangle(text_bbox, fill="red")
+        draw.text((det.x1, text_y), label, fill="white", font=font)
     return draw_img
 
 
@@ -65,7 +84,7 @@ def run_test():
         zones = parse_zones(config["cameras"][0])
 
     image_dir = Path(__file__).parent
-    images = list(image_dir.glob("*.jpg"))
+    images = list(image_dir.rglob("*.jpg"))
     if not images:
         print(f"No .jpg images found in {image_dir}")
         return
