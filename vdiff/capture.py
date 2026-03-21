@@ -27,6 +27,8 @@ class CameraConfig:
     auth: str = "none"  # "digest", "basic", "none"
     interval: float = 10.0
     device_id: int = 0  # for local cameras
+    stabilize: bool = False  # Enable image stabilization
+
 
 
 class CameraSource:
@@ -153,6 +155,71 @@ class LocalCamera(CameraSource):
                 cap.release()
 
 
+class StabilizedCamera(CameraSource):
+    """Wraps a CameraSource to provide image stabilization using phase correlation.
+    
+    This is extremely useful for cameras that shake slightly in the wind or from traffic,
+    which often causes false positives in the pixel-diff stage.
+    """
+
+    def __init__(self, camera: CameraSource):
+        self._wrapped = camera
+        self.config = camera.config
+        self.name = camera.name
+        self._anchor_gray = None
+
+    def capture(self) -> Optional[Image.Image]:
+        image = self._wrapped.capture()
+        if image is None:
+            return None
+
+        # Convert to grayscale numpy array for phase correlation
+        np_img = np.array(image.convert("L"))
+        h, w = np_img.shape
+
+        if self._anchor_gray is None:
+            # First frame, just establish the anchor
+            self._anchor_gray = np_img
+            return image
+
+        # Phase correlation to find translation (dx, dy)
+        # Crop out the top 5% of the frame to ignore camera timestamps/OSDs
+        crop_top = int(h * 0.05)
+        np_img_cropped = np_img[crop_top:, :]
+        anchor_gray_cropped = self._anchor_gray[crop_top:, :]
+        
+        shift, _ = cv2.phaseCorrelate(np.float32(np_img_cropped), np.float32(anchor_gray_cropped))
+        dx, dy = shift
+
+        # If shift is suspiciously large, the camera might have actually moved (e.g. PTZ)
+        if abs(dx) > w * 0.1 or abs(dy) > h * 0.1:
+            logger.info(f"[{self.name}] Shift too large (dx={dx:.1f}, dy={dy:.1f}), resetting stabilization anchor")
+            self._anchor_gray = np_img
+            return image
+
+        # If shift is tiny, don't bother warping
+        if abs(dx) < 0.5 and abs(dy) < 0.5:
+            return image
+
+        # Apply translation using numpy slicing instead of cv2.warpAffine for better performance
+        # (Though warpAffine is also very fast; this is a clean way to do it)
+        M = np.float32([[1, 0, dx], [0, 1, dy]])
+        np_rgb = np.array(image)
+        stabilized_rgb = cv2.warpAffine(np_rgb, M, (w, h))
+
+        logger.debug(f"[{self.name}] Stabilized frame: shift (dx={dx:.2f}, dy={dy:.2f})")
+        return Image.fromarray(stabilized_rgb)
+
+    @property
+    def seconds_until_next(self) -> float:
+        return self._wrapped.seconds_until_next
+
+    @property
+    def is_due(self) -> bool:
+        return self._wrapped.is_due
+
+
+
 def create_camera(cam_cfg: dict) -> CameraSource:
     """Factory: create the appropriate CameraSource from a config dict."""
     config = CameraConfig(
@@ -164,6 +231,7 @@ def create_camera(cam_cfg: dict) -> CameraSource:
         auth=cam_cfg.get("auth", "none"),
         interval=cam_cfg.get("interval", 10),
         device_id=cam_cfg.get("device_id", 0),
+        stabilize=cam_cfg.get("stabilize", False),
     )
 
     camera_types = {
@@ -174,4 +242,9 @@ def create_camera(cam_cfg: dict) -> CameraSource:
     }
     cls = camera_types.get(config.type, HTTPCamera)
     logger.info(f"Initialized camera '{config.name}' (type={config.type})")
-    return cls(config)
+    
+    camera = cls(config)
+    if config.stabilize:
+        logger.info(f"[{config.name}] Image stabilization enabled")
+        camera = StabilizedCamera(camera)
+    return camera

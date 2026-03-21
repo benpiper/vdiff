@@ -11,6 +11,7 @@ cameras:
     password: "password123"
     auth: digest              # digest | basic | none
     interval: 15              # seconds between captures
+    stabilize: true           # reduce false positives from camera shake
 
     # Zones — only monitor these areas (omit to monitor entire frame)
     # Coordinates are percentages (0-100) of image width/height

@@ -243,6 +243,7 @@ class VDiffApp:
         t_capture = time.monotonic() - t0
 
         state.capture_count += 1
+        raw_image = image  # keep original for debug
 
         # Build zone mask on first capture (needs image dimensions)
         if state.zones and state.zone_mask is None:
@@ -316,6 +317,8 @@ class VDiffApp:
 
             debug_drawn = draw_detections(image, det_result.detections)
             state.save_image(debug_drawn, "_debug")
+            state.save_image(raw_image, "_debug_raw")
+            state.save_image(image, "_debug_masked")
 
         # --- LOGGING: Decision Matrix & Detection Summary ---
         # Log basic YOLO findings immediately
