@@ -21,6 +21,14 @@ cameras:
         y: 35               # top edge %
         w: 60               # width %
         h: 20               # height %
+    
+    # Per-camera detection overrides (optional)
+    # detection:
+    #   confidence: 0.5        # stricter detection for this camera
+    #   classes: ["person"]   # only care about people here
+    # diff:
+    #   min_changed_pct: 5.0  # less sensitive to motion
+    #   ssim_threshold: 0.95   # different structural tolerance
 
 # Diff engine settings (pixel-based change detection)
 diff:

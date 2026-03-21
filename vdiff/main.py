@@ -31,9 +31,12 @@ class CameraState:
         history_count: int = 20,
         image_dir: str = "./captures",
         zones: list = None,
+        diff_config: dict = None,
+        detection_config: dict = None,
     ):
         self.camera = camera
         self.prev_image: Optional[Image.Image] = None
+        self.prev_detections: list = []  # Unique tracking state per camera
         self.history: list[Path] = []
         self.history_count = history_count
         self.image_dir = Path(image_dir) / self._safe_name(camera.name)
@@ -42,6 +45,8 @@ class CameraState:
         self.change_count = 0
         self.zones: list[Zone] = zones or []
         self.zone_mask = None  # built on first capture (needs image dimensions)
+        self.diff_config = diff_config or {}
+        self.detection_config = detection_config or {}
 
     @staticmethod
     def _safe_name(name: str) -> str:
@@ -140,10 +145,28 @@ class VDiffApp:
         image_dir = storage.get("image_dir", "./captures")
 
         # Initialize cameras
+        global_diff = self.config.get("diff", {})
+        global_det = self.config.get("detection", {})
+
         for cam_cfg in self.config.get("cameras", []):
             camera = create_camera(cam_cfg)
             zones = parse_zones(cam_cfg)
-            state = CameraState(camera, history_count, image_dir, zones=zones)
+
+            # Merge per-camera overrides
+            cam_diff = global_diff.copy()
+            cam_diff.update(cam_cfg.get("diff", {}))
+
+            cam_det = global_det.copy()
+            cam_det.update(cam_cfg.get("detection", {}))
+
+            state = CameraState(
+                camera,
+                history_count,
+                image_dir,
+                zones=zones,
+                diff_config=cam_diff,
+                detection_config=cam_det,
+            )
             state.cleanup_stale_images()
             self.cameras.append(state)
 
@@ -269,7 +292,11 @@ class VDiffApp:
 
         # 2. YOLO detection (now runs ONLY on masked zones)
         t0 = time.monotonic()
-        det_result = self.detector.detect(image)
+        det_result = self.detector.detect(
+            image,
+            prev_detections=state.prev_detections,
+            config=state.detection_config,
+        )
         t_detect = time.monotonic() - t0
 
         # First image — nothing to compare yet
@@ -289,7 +316,10 @@ class VDiffApp:
 
         # 3. Pixel diff (cheap gate) — restricted to zones if configured
         diff_result = self.diff_engine.compare(
-            state.prev_image, image, zone_mask=state.zone_mask
+            state.prev_image,
+            image,
+            zone_mask=state.zone_mask,
+            config=state.diff_config,
         )
 
         # Decide if anything interesting happened
@@ -348,7 +378,7 @@ class VDiffApp:
             # Determine Stage 1 status (Pixel Diff percentage)
             s1_status = (
                 "PASS"
-                if diff_result.changed_pct >= self.diff_engine.min_changed_pct
+                if diff_result.changed_pct >= state.diff_config.get("min_changed_pct", 2.0)
                 else "SKIP"
             )
 
@@ -459,8 +489,9 @@ class VDiffApp:
                 f"but no rules matched: {description}"
             )
 
-        # Update previous image
+        # Update previous state
         state.prev_image = image
+        state.prev_detections = det_result.detections
 
     def _apply_zone_mask(self, image: Image.Image, mask: Optional[any]) -> Image.Image:
         """Black out areas of a PIL Image that are outside the provided numpy mask."""

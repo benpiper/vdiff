@@ -152,7 +152,6 @@ class ObjectDetector:
         self.classes = config.get("classes", None)  # None = all classes
         self.img_size = config.get("img_size", 640)
         self._model = None
-        self._prev_detections: list[Detection] = []
 
     def _get_model(self):
         """Lazy-load the YOLO model."""
@@ -165,25 +164,36 @@ class ObjectDetector:
             logging.getLogger("ultralytics").setLevel(logging.WARNING)
 
             # Resolve class names to IDs if provided as strings
-            if self.classes:
-                resolved = []
-                names_map = {v.lower(): k for k, v in self._model.names.items()}
-                for c in self.classes:
-                    if isinstance(c, str):
-                        c_lower = c.lower()
-                        if c_lower in names_map:
-                            resolved.append(names_map[c_lower])
-                        else:
-                            logger.warning(f"Unknown class name: {c}")
-                    else:
-                        resolved.append(c)
-                self.classes = resolved
+            self.classes = self._resolve_classes(self._model, self.classes)
 
         return self._model
 
-    def detect(self, image: Image.Image) -> DetectionResult:
+    def _resolve_classes(self, model, classes) -> Optional[list[int]]:
+        """Resolve a list of class names (strings) or IDs to a list of integer IDs."""
+        if not classes:
+            return None
+
+        resolved = []
+        names_map = {v.lower(): k for k, v in model.names.items()}
+        for c in classes:
+            if isinstance(c, str):
+                c_lower = c.lower()
+                if c_lower in names_map:
+                    resolved.append(names_map[c_lower])
+                else:
+                    logger.warning(f"Unknown class name: {c}")
+            else:
+                resolved.append(c)
+        return resolved
+
+    def detect(
+        self,
+        image: Image.Image,
+        prev_detections: list[Detection] = None,
+        config: dict = None,
+    ) -> DetectionResult:
         """
-        Run detection on an image and track changes from previous frame.
+        Run detection on an image and track changes from a previous set of detections.
         Returns DetectionResult with detections and tracked changes.
         """
         if not self.enabled:
@@ -191,13 +201,31 @@ class ObjectDetector:
 
         model = self._get_model()
 
+        # Merge local overrides if provided
+        conf = config.get("confidence", self.confidence) if config else self.confidence
+        iou = (
+            config.get("iou_threshold", self.iou_threshold)
+            if config
+            else self.iou_threshold
+        )
+        imgsz = config.get("img_size", self.img_size) if config else self.img_size
+        classes = config.get("classes", self.classes) if config else self.classes
+        if classes is not self.classes:
+            classes = self._resolve_classes(model, classes)
+            
+        move_threshold = (
+            config.get("move_threshold", self.move_threshold)
+            if config
+            else self.move_threshold
+        )
+
         # Run inference
         results = model.predict(
             source=image,
-            conf=self.confidence,
-            iou=self.iou_threshold,
-            imgsz=self.img_size,
-            classes=self.classes,
+            conf=conf,
+            iou=iou,
+            imgsz=imgsz,
+            classes=classes,
             verbose=False,
         )
 
@@ -208,13 +236,13 @@ class ObjectDetector:
             names = result.names
             for box in result.boxes:
                 cls_id = int(box.cls[0])
-                conf = float(box.conf[0])
+                conf_score = float(box.conf[0])
                 x1, y1, x2, y2 = box.xyxy[0].tolist()
                 detections.append(
                     Detection(
                         class_id=cls_id,
                         class_name=names.get(cls_id, f"class_{cls_id}"),
-                        confidence=conf,
+                        confidence=conf_score,
                         x1=int(x1),
                         y1=int(y1),
                         x2=int(x2),
@@ -223,13 +251,10 @@ class ObjectDetector:
                 )
 
         # Track changes
-        changes = self._track_changes(detections)
+        changes = self._track_changes(detections, prev_detections, move_threshold)
         has_changes = any(
             c.change_type in ("appeared", "disappeared", "moved") for c in changes
         )
-
-        # Store for next frame
-        self._prev_detections = detections
 
         det_result = DetectionResult(
             detections=detections,
@@ -239,9 +264,10 @@ class ObjectDetector:
 
         return det_result
 
-    def _track_changes(self, curr: list[Detection]) -> list[TrackedChange]:
+    def _track_changes(
+        self, curr: list[Detection], prev: list[Detection], move_threshold: int
+    ) -> list[TrackedChange]:
         """Compare current detections to previous frame's detections."""
-        prev = self._prev_detections
         if not prev:
             # First frame — everything is "appeared"
             return [TrackedChange(change_type="appeared", detection=d) for d in curr]
@@ -274,7 +300,7 @@ class ObjectDetector:
                     + (c_det.center[1] - p_det.center[1]) ** 2
                 ) ** 0.5
 
-                if dist > self.move_threshold:
+                if dist > move_threshold:
                     changes.append(
                         TrackedChange(
                             change_type="moved",

@@ -79,9 +79,26 @@ class DiffEngine:
         prev: Image.Image,
         curr: Image.Image,
         zone_mask: "np.ndarray | None" = None,
+        config: dict = None,
     ) -> DiffResult:
         """Compare two images. Optionally restrict to zone_mask regions."""
         result = DiffResult()
+
+        pixel_threshold = (
+            config.get("pixel_threshold", self.pixel_threshold)
+            if config
+            else self.pixel_threshold
+        )
+        min_changed_pct = (
+            config.get("min_changed_pct", self.min_changed_pct)
+            if config
+            else self.min_changed_pct
+        )
+        ssim_threshold = (
+            config.get("ssim_threshold", self.ssim_threshold)
+            if config
+            else self.ssim_threshold
+        )
 
         # Resize for speed
         prev_r = self._resize(prev)
@@ -127,18 +144,18 @@ class DiffEngine:
             if total_pixels == 0:
                 return result
             result.pixel_diff_score = float(np.mean(zone_diff))
-            changed_pixels = np.sum(zone_diff > self.pixel_threshold)
+            changed_pixels = np.sum(zone_diff > pixel_threshold)
         else:
             result.pixel_diff_score = float(np.mean(abs_diff))
-            changed_pixels = np.sum(abs_diff > self.pixel_threshold)
+            changed_pixels = np.sum(abs_diff > pixel_threshold)
             total_pixels = abs_diff.size
 
         result.changed_pct = float(changed_pixels / total_pixels * 100)
 
-        if result.changed_pct < self.min_changed_pct:
+        if result.changed_pct < min_changed_pct:
             logger.debug(
                 f"Stage 1 pass: only {result.changed_pct:.2f}% pixels changed "
-                f"(threshold: {self.min_changed_pct}%)"
+                f"(threshold: {min_changed_pct}%)"
             )
             return result
 
@@ -151,10 +168,10 @@ class DiffEngine:
         )
         result.ssim_score = float(score)
 
-        if result.ssim_score > self.ssim_threshold:
+        if result.ssim_score > ssim_threshold:
             logger.debug(
                 f"Stage 2 pass: SSIM={result.ssim_score:.4f} "
-                f"(threshold: {self.ssim_threshold})"
+                f"(threshold: {ssim_threshold})"
             )
             return result
 

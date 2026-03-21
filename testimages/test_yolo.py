@@ -145,7 +145,7 @@ def run_test():
                 test_versions.append(("Masked", apply_mask(img_raw, mask)))
 
             for label, test_img in test_versions:
-                result = detector.detect(test_img)
+                result = detector.detect(test_img, prev_detections=None)
                 prefix = f"  [{label}]"
                 if result.detections:
                     for det in result.detections:
